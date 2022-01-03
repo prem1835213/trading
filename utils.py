@@ -6,38 +6,22 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Normal
 
-def train_dqn(dqn, env, batch_size, discount, eps_init, eps_decay, eps_min, num_actions):
+def train_dqn(dqn, env, batch_size, discount, eps_init, eps_decay, eps_min, num_actions, n_episodes):
     optimizer = optim.Adam(dqn.parameters())
     criterion = nn.MSELoss()
     epsilon = eps_init
-    for episode in range(1):
+    for episode in range(n_episodes):
         print("\nEpisode: ", episode)
         s = env.reset()
         time = 0
         while s is not None:
-            env.render()
+            # env.render()
             s = torch.FloatTensor(s)
-            if random.random() < epsilon:
+            if random.random() < epsilon: # explore
                 a = random.randrange(num_actions)
-                side = 'hold'
-                if a == 0:
-                    side = 'hold'
-                elif a == 1:
-                    side = 'buy'
-                else:
-                    side = 'sell'
-                print("Random Action: ", side)
-            else:
+            else: # exploit
                 with torch.no_grad():
                     a = dqn(s).argmax().item()
-                    side = 'hold'
-                    if a == 0:
-                        side = 'hold'
-                    elif a == 1:
-                        side = 'buy'
-                    else:
-                        side = 'sell'
-                    print("Action: ", side)
 
             s_next, r, done, info = env.step(a)
             s_next = torch.FloatTensor(s_next)
@@ -47,19 +31,46 @@ def train_dqn(dqn, env, batch_size, discount, eps_init, eps_decay, eps_min, num_
             # sample and perform update
             if len(dqn.memory) >= batch_size:
                 batch = dqn.memory.sample(batch_size)
-                for sequence in batch:
-                    batch_state, batch_action, batch_reward, batch_next_state, batch_done = sequence
 
-                    if batch_done:
-                        exp_reward = batch_reward
-                    else:
-                        exp_reward = batch_reward + discount * dqn(batch_next_state).max()
+                batch_states = [elem[0] for elem in batch]
+                batch_states = torch.stack(batch_states)
 
-                    predicted_reward = dqn(batch_state)[batch_action]
-                    optimizer.zero_grad()
-                    loss = criterion(predicted_reward, exp_reward)
-                    loss.backward()
-                    optimizer.step()
+                batch_actions = torch.tensor([elem[1] for elem in batch]).view(batch_size, 1)
+
+                batch_next_states = [elem[3] for elem in batch]
+                batch_next_states = torch.stack(batch_next_states)
+
+                batch_rewards = torch.FloatTensor([elem[2] for elem in batch])
+
+                mask = [j for j in range(batch_size) if batch[j][4] == False]
+                predicted_rewards = torch.gather(dqn(batch_states), 1, batch_actions).view(batch_size, )
+
+                label_rewards = batch_rewards
+                try:
+                    label_rewards[mask] += discount * torch.max(dqn(batch_next_states[mask]), 1).values
+                except:
+                    print(label_rewards[mask].shape)
+                    print(label_rewards.shape)
+                    print(torch.max(dqn(batch_next_states), 1).values.shape)
+
+                optimizer.zero_grad()
+                loss = criterion(predicted_rewards, label_rewards)
+                loss.backward()
+                optimizer.step()
+
+                # for sequence in batch:
+                #     batch_state, batch_action, batch_reward, batch_next_state, batch_done = sequence
+                #
+                #     if batch_done:
+                #         exp_reward = batch_reward
+                #     else:
+                #         exp_reward = batch_reward + discount * dqn(batch_next_state).max()
+                #
+                #     predicted_reward = dqn(batch_state)[batch_action]
+                #     optimizer.zero_grad()
+                #     loss = criterion(predicted_reward, exp_reward)
+                #     loss.backward()
+                #     optimizer.step()
 
             if epsilon > eps_min:
                 epsilon *= eps_decay
@@ -70,6 +81,8 @@ def train_dqn(dqn, env, batch_size, discount, eps_init, eps_decay, eps_min, num_
                 # print("Episode Duration ", time)
             else:
                 s = s_next
+
+        env.render()
     env.close()
 
 def train_ac(actor, critic, env, discount):
