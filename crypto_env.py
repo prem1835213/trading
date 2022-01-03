@@ -68,12 +68,13 @@ class Market(Env):
             obs.append(self.units_held)
             reward = 0
         elif action > 0 and action <= 1: # buying
-            buy_price = self.prices[self.time]
-            units_bought = self.max_units_buy * action
-            self.buys.append([buy_price, units_bought])
+            if self.total_cash != 0:
+                buy_price = self.prices[self.time]
+                units_bought = self.max_units_buy * action
+                self.buys.append([buy_price, units_bought])
+                self.units_held +=  units_bought
+                self.total_cash -= units_bought * buy_price
 
-            self.units_held +=  units_bought
-            self.total_cash -= units_bought * buy_price
             self.max_units_sell = self.units_held
             if self.time + 1 == len(self.df) - 1:
                 self.max_units_buy = 0
@@ -191,79 +192,3 @@ class Market(Env):
 
         plt.plot(buys, buy_prices, 'go')
         plt.plot(sells, sell_prices, 'ro')
-# class CryptoEnv(TradingEnv):
-#
-#     def __init__(self, df, window_size):
-#         """
-#         df: OHLCV Data for the environment
-#         window_size: Number of candles agent can view
-#         """
-#         super().__init__(df, window_size)
-#         self.taker_fee = 0.004
-#         print(self.df)
-#     def _process_data(self):
-#         prices = self.df['Close'].to_numpy()
-#
-#         # Feature Engineering
-#         signal_features = self.df[['Open', 'High', 'Low', 'Close', 'Volume']]
-#         signal_features['Range'] = self.df['High'] - self.df['Low']
-#         signal_features = signal_features.to_numpy()
-#
-#         return prices, signal_features
-#
-#     def _calculate_reward(self, action):
-#         """
-#         Actions: value in {0, 1}. 0 = Sell, 1 = Buy
-#         Returns one step immediate reward
-#
-#         Short position is used as a default position in this environment
-#         """
-#         step_reward = 0
-#
-#         trade = False
-#         if ((action == Actions.Buy.value and self._position == Positions.Short) or
-#             (action == Actions.Sell.value and self._position == Positions.Long)):
-#             trade = True # exiting a position
-#
-#         if trade:
-#             current_price = self.prices[self._current_tick]
-#             last_trade_price = self.prices[self._last_trade_tick]
-#             price_diff = current_price - last_trade_price
-#
-#             if self._position == Positions.Long:
-#                 step_reward += price_diff
-#
-#         return step_reward
-#
-#     def _update_profit(self, action):
-#          # always market order at close price so gets taker fee
-#         shares = (self._total_profit * (1 - self.taker_fee)) / last_trade_price
-#         self._total_profit = shares * current_price * (1 - self.taker_fee)
-#
-#     def max_possible_profit(self):
-#         current_tick = self._start_tick
-#         last_trade_tick = current_tick - 1
-#
-#         profit = 1.0
-#         while current_tick <= self._end_tick:
-#             position = None
-#             if self.prices[current_tick] < self.prices[current_tick - 1]:
-#                 while (current_tick <= self._end_tick) and (self.prices[current_tick] < self.prices[current_tick - 1]):
-#                     current_tick += 1
-#                 position = Positions.Short
-#
-#             else:
-#                 while current_tick <= self._end_tick and self.prices[current_tick] >= (self.prices[current_tick] - 1):
-#                     current_tick += 1
-#                 position = Positions.Long
-#
-#
-#             if position == Positions.Long:
-#                 current_price = self.prices[current_tick - 1]
-#                 last_trade_price = self.prices[last_trade_tick]
-#                 shares = profit / last_trade_price
-#                 profit = shares * current_price
-#
-#             last_trade_tick = current_tick - 1
-#
-#         return profit
